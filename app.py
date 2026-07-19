@@ -1,6 +1,7 @@
 import streamlit as st
 from database import init_db, get_connection
 from datetime import date
+from datetime import datetime
 from streak_logic import update_streak_on_completion, get_streak
 from ai_planner import generate_task_breakdown
 
@@ -130,14 +131,71 @@ elif page == "Goals":
                     status_msg = "🟡 Right on pace — keep it up."
 
                 st.caption(f"Expected progress by today: {expected_pct:.0f}% | {status_msg}")
+                if st.button("🔄 Regenerate tasks with AI", key=f"regenerate_{goal_id}"):
+                    profile_data = conn.execute(
+                        "SELECT profession, hours_per_day FROM user_profile WHERE id=1"
+                    ).fetchone()
+                    profession, hours_per_day = profile_data
+
+                    with st.spinner("🤖 Regenerating your task breakdown..."):
+                        new_tasks = generate_task_breakdown(
+                            goal_title=title,
+                            goal_deadline=str(deadline),
+                            profession=profession or "Student",
+                            hours_per_day=hours_per_day or 2
+                        )
+
+                    conn.execute("DELETE FROM tasks WHERE goal_id=? AND status='pending'", (goal_id,))
+                    for t in new_tasks:
+                        conn.execute(
+                            "INSERT INTO tasks (goal_id, title, deadline) VALUES (?, ?, ?)",
+                            (goal_id, t["title"], t["deadline"])
+                        )
+                    conn.commit()
+                    st.success(f"Regenerated {len(new_tasks)} tasks!")
+                    st.rerun()
+
                 with st.expander(f"📋 View all {total} tasks"):
                     goal_tasks = conn.execute(
-                        "SELECT title, deadline, status FROM tasks WHERE goal_id=? ORDER BY deadline",
+                        "SELECT id, title, deadline, status FROM tasks WHERE goal_id=? ORDER BY deadline",
                         (goal_id,)
                     ).fetchall()
-                    for t_title, t_deadline, t_status in goal_tasks:
+                    for gt_id, t_title, t_deadline, t_status in goal_tasks:
                         icon = "✅" if t_status == "done" else "⬜"
-                        st.write(f"{icon} **{t_title}** — due {t_deadline}")
+                        edit_key = f"editing_task_{gt_id}"
+
+                        row_col1, row_col2 = st.columns([5, 1])
+                        with row_col1:
+                            st.markdown(f"{icon} **{t_title}**")
+                            st.caption(f"Due: {t_deadline}")
+                        with row_col2:
+                            if st.button("✏️", key=f"edit_btn_{gt_id}"):
+                                st.session_state[edit_key] = not st.session_state.get(edit_key, False)
+
+                        if st.session_state.get(edit_key):
+                            with st.form(f"edit_form_{gt_id}"):
+                                new_title = st.text_input("Task title", value=t_title, key=f"title_{gt_id}")
+                                new_deadline = st.date_input(
+                                    "Deadline",
+                                    value=datetime.strptime(t_deadline, "%Y-%m-%d").date(),
+                                    key=f"deadline_{gt_id}"
+                                )
+                                save_col, delete_col = st.columns(2)
+                                with save_col:
+                                    if st.form_submit_button("Save"):
+                                        conn.execute(
+                                            "UPDATE tasks SET title=?, deadline=? WHERE id=?",
+                                            (new_title, str(new_deadline), gt_id)
+                                        )
+                                        conn.commit()
+                                        st.session_state[edit_key] = False
+                                        st.rerun()
+                                with delete_col:
+                                    if st.form_submit_button("🗑️ Delete this task"):
+                                        conn.execute("DELETE FROM tasks WHERE id=?", (gt_id,))
+                                        conn.commit()
+                                        st.session_state[edit_key] = False
+                                        st.rerun()
         with col2:
             st.write("")
             if st.button("🗑️ Delete", key=f"delete_goal_{goal_id}"):
