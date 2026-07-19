@@ -3,10 +3,13 @@ from database import init_db, get_connection
 from datetime import date
 from streak_logic import update_streak_on_completion, get_streak
 
-st.set_page_config(page_title="Deadline Tracker", layout="wide")
+st.set_page_config(page_title="Deadline Tracker", page_icon="🎯", layout="wide")
 init_db()
 
+st.sidebar.title("🎯 Deadline Tracker")
 page = st.sidebar.radio("Navigate", ["Today", "Goals", "Add New"])
+st.sidebar.divider()
+st.sidebar.caption("Stay consistent. One task at a time.")
 
 if page == "Today":
     st.title("Today's Tasks")
@@ -19,17 +22,25 @@ if page == "Today":
     ).fetchall()
 
     if not tasks:
-        st.info("No tasks due today. Add some in 'Add New'!")
+        st.success("🎉 Nothing due today — you're all caught up!")
+        st.caption("Add a new task anytime from the 'Add New' tab.")
 
     for task_id, title, deadline in tasks:
-        if st.checkbox(f"{title} (due {deadline})", key=f"task_{task_id}"):
-            conn.execute(
-                "UPDATE tasks SET status='done', completed_at=? WHERE id=?",
-                (date.today(), task_id)
-            )
-            conn.commit()
-            update_streak_on_completion()
-            st.rerun()
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            if st.checkbox(f"{title} (due {deadline})", key=f"task_{task_id}"):
+                conn.execute(
+                    "UPDATE tasks SET status='done', completed_at=? WHERE id=?",
+                    (date.today(), task_id)
+                )
+                conn.commit()
+                update_streak_on_completion()
+                st.rerun()
+        with col2:
+            if st.button("🗑️", key=f"delete_task_{task_id}"):
+                conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+                conn.commit()
+                st.rerun()
     conn.close()
 
 elif page == "Goals":
@@ -38,15 +49,48 @@ elif page == "Goals":
     goals = conn.execute("SELECT id, title, deadline FROM goals").fetchall()
 
     if not goals:
-        st.info("No goals yet. Add one in 'Add New'!")
+        st.info("📌 No goals yet — start by adding one in 'Add New'.")
+        st.caption("A goal could be an exam, a project, or anything with a deadline.")
 
     for goal_id, title, deadline in goals:
         total = conn.execute("SELECT COUNT(*) FROM tasks WHERE goal_id=?", (goal_id,)).fetchone()[0]
         done = conn.execute("SELECT COUNT(*) FROM tasks WHERE goal_id=? AND status='done'", (goal_id,)).fetchone()[0]
         pct = (done / total * 100) if total > 0 else 0
-        st.subheader(f"{title} (due {deadline})")
-        st.progress(pct / 100)
-        st.caption(f"{done}/{total} tasks complete")
+
+        celebrated_key = f"celebrated_{goal_id}"
+        if total > 0 and pct == 100:
+            if not st.session_state.get(celebrated_key):
+                st.balloons()
+                st.session_state[celebrated_key] = True
+        else:
+            st.session_state[celebrated_key] = False
+
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            st.subheader(f"{title} (due {deadline})")
+            st.progress(pct / 100)
+            st.caption(f"{done}/{total} tasks complete")
+        with col2:
+            st.write("")
+            if st.button("🗑️ Delete", key=f"delete_goal_{goal_id}"):
+                st.session_state[f"confirm_delete_{goal_id}"] = True
+
+        if st.session_state.get(f"confirm_delete_{goal_id}"):
+            st.warning(f"Delete '{title}' and all {total} of its tasks? This cannot be undone.")
+            confirm_col1, confirm_col2 = st.columns(2)
+            with confirm_col1:
+                if st.button("Yes, delete it", key=f"confirm_yes_{goal_id}"):
+                    conn.execute("DELETE FROM tasks WHERE goal_id=?", (goal_id,))
+                    conn.execute("DELETE FROM goals WHERE id=?", (goal_id,))
+                    conn.commit()
+                    del st.session_state[f"confirm_delete_{goal_id}"]
+                    st.rerun()
+            with confirm_col2:
+                if st.button("Cancel", key=f"confirm_no_{goal_id}"):
+                    del st.session_state[f"confirm_delete_{goal_id}"]
+                    st.rerun()
+
+        st.divider()
     conn.close()
 
 elif page == "Add New":
