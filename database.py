@@ -15,9 +15,15 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             deadline DATE NOT NULL,
+            subjects TEXT,
             created_at DATE DEFAULT CURRENT_DATE
         )
     """)
+    try:
+        conn.execute("ALTER TABLE goals ADD COLUMN subjects TEXT")
+    except Exception:
+        pass
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS user_profile (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -28,6 +34,7 @@ def init_db():
         )
     """)
     conn.execute("INSERT OR IGNORE INTO user_profile (id, onboarded) VALUES (1, 0)")
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +46,7 @@ def init_db():
             FOREIGN KEY (goal_id) REFERENCES goals (id)
         )
     """)
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS streak (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -48,5 +56,18 @@ def init_db():
         )
     """)
     conn.execute("INSERT OR IGNORE INTO streak (id, current_streak, longest_streak) VALUES (1, 0, 0)")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS study_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject TEXT NOT NULL,
+            session_type TEXT NOT NULL,
+            start_time TEXT,
+            end_time TEXT,
+            duration_minutes REAL,
+            date DATE DEFAULT CURRENT_DATE
+        )
+    """)
+
     conn.commit()
     conn.close()

@@ -3,9 +3,11 @@ from database import init_db, get_connection
 from datetime import date, datetime, timedelta
 from streak_logic import update_streak_on_completion, get_streak
 from ai_planner import generate_task_breakdown, generate_weekly_summary
+from collections import Counter
 
 st.set_page_config(page_title="Deadline Tracker", page_icon="🎯", layout="wide")
 init_db()
+
 conn = get_connection()
 profile = conn.execute("SELECT onboarded FROM user_profile WHERE id=1").fetchone()
 conn.close()
@@ -42,14 +44,47 @@ if profile[0] == 0:
     st.stop()
 
 st.sidebar.title("🎯 Deadline Tracker")
-page = st.sidebar.radio("Navigate", ["Today", "Goals", "Add New", "Profile"])
+page = st.sidebar.radio("Navigate", ["Home", "Today", "Goals", "Add New", "Insights", "Profile"])
 st.sidebar.divider()
 st.sidebar.caption("Stay consistent. One task at a time.")
 
-if page == "Today":
+
+if page == "Home":
+    st.title("🏠 Home")
+
+    conn_home = get_connection()
+    nearest_goal = conn_home.execute(
+        "SELECT title, deadline FROM goals WHERE deadline >= ? ORDER BY deadline ASC LIMIT 1",
+        (date.today().isoformat(),)
+    ).fetchone()
+    conn_home.close()
+
+    if nearest_goal:
+        goal_title, goal_deadline = nearest_goal
+        deadline_date = datetime.strptime(goal_deadline, "%Y-%m-%d").date() if isinstance(goal_deadline, str) else goal_deadline
+        days_left = (deadline_date - date.today()).days
+
+        if days_left == 0:
+            countdown_msg = f"🔥 **{goal_title}** is due **today**!"
+        elif days_left == 1:
+            countdown_msg = f"⏳ **{goal_title}** is due **tomorrow**!"
+        else:
+            countdown_msg = f"⏳ **{days_left} days** left until **{goal_title}**"
+
+        st.info(countdown_msg)
+    else:
+        st.caption("No upcoming goals yet — add one to see your countdown here.")
+
+    st.divider()
+    st.subheader("⏱️ Study Timer")
+    st.caption("Subject-wise stopwatch coming next.")
+
+
+elif page == "Today":
     st.title("Today's Tasks")
     current, longest = get_streak()
     st.metric("Current Streak 🔥", f"{current} days", help=f"Longest streak: {longest} days")
+
     with st.expander("📊 View this week's summary"):
         conn_summary = get_connection()
         week_ago = (date.today() - timedelta(days=7)).isoformat()
@@ -68,7 +103,6 @@ if page == "Today":
         if completed_count == 0 and total_this_week == 0:
             st.info("Not enough activity yet this week to generate a summary.")
         else:
-            from collections import Counter
             day_counts = Counter(datetime.strptime(c[0], "%Y-%m-%d").strftime("%A") for c in completed_this_week)
             best_day = day_counts.most_common(1)[0][0] if day_counts else "N/A"
 
@@ -86,6 +120,7 @@ if page == "Today":
                     )
                 st.write(summary)
         conn_summary.close()
+
     conn = get_connection()
     tasks = conn.execute(
         "SELECT id, title, deadline FROM tasks WHERE status='pending' AND deadline <= ?",
@@ -113,6 +148,7 @@ if page == "Today":
                 conn.commit()
                 st.rerun()
     conn.close()
+
 
 elif page == "Goals":
     st.title("Your Goals")
@@ -143,7 +179,6 @@ elif page == "Goals":
             st.caption(f"{done}/{total} tasks complete")
 
             if total > 0:
-                from datetime import datetime
                 goal_created = conn.execute("SELECT created_at FROM goals WHERE id=?", (goal_id,)).fetchone()[0]
                 start_date = datetime.strptime(goal_created, "%Y-%m-%d").date()
                 end_date = datetime.strptime(str(deadline), "%Y-%m-%d").date() if isinstance(deadline, str) else deadline
@@ -166,6 +201,7 @@ elif page == "Goals":
                     status_msg = "🟡 Right on pace — keep it up."
 
                 st.caption(f"Expected progress by today: {expected_pct:.0f}% | {status_msg}")
+
                 if st.button("🔄 Regenerate tasks with AI", key=f"regenerate_{goal_id}"):
                     profile_data = conn.execute(
                         "SELECT profession, hours_per_day FROM user_profile WHERE id=1"
@@ -231,6 +267,7 @@ elif page == "Goals":
                                         conn.commit()
                                         st.session_state[edit_key] = False
                                         st.rerun()
+
         with col2:
             st.write("")
             if st.button("🗑️ Delete", key=f"delete_goal_{goal_id}"):
@@ -253,6 +290,7 @@ elif page == "Goals":
 
         st.divider()
     conn.close()
+
 
 elif page == "Add New":
     st.title("Add Goal or Task")
@@ -333,6 +371,14 @@ elif page == "Add New":
                 conn.close()
                 st.success("Task added!")
                 st.rerun()
+
+
+elif page == "Insights":
+    st.title("📊 Insights")
+    st.caption("Calendar view and progress analytics will live here.")
+    st.info("Coming soon: calendar view of all deadlines, and analytics graphs tracking your progress over time.")
+
+
 elif page == "Profile":
     st.title("👤 Your Profile")
     conn = get_connection()
