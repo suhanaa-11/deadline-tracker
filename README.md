@@ -21,25 +21,24 @@ Most task apps are either too basic, offering just a simple to-do list, or too o
 * Database: SQLite (lightweight, file-based, zero setup)
 * Language: Python 3
 
-🚀 Getting Started
+## 🚀 Getting Started
 
-# clone the repo
+```bash
 git clone https://github.com/suhanaa-11/deadline-tracker.git
 cd deadline-tracker
 
-# set up virtual environment
 python -m venv venv
-venv\Scripts\activate      # Windows
-source venv/bin/activate   # Mac/Linux
+venv\Scripts\activate
+source venv/bin/activate
 
-# install dependencies
 pip install -r requirements.txt
 
-# run the app
 streamlit run app.py
+```
 
-📁 Project Structure
+## 📁 Project Structure
 
+```
 deadline-tracker/
 ├── app.py              # Main Streamlit app (UI + page routing)
 ├── database.py         # SQLite schema and connection handling
@@ -48,16 +47,19 @@ deadline-tracker/
 ├── data/
 │   └── tracker.db       # SQLite database (auto-created, gitignored)
 └── .gitignore
+```
 
-🗺️ Roadmap
+## 🗺️ Roadmap
 
+```
 [ ] AI-powered goal decomposition — enter a big goal (e.g. “prepare for GATE exam”), AI generates a full task breakdown with yearly/monthly/weekly/daily targets
 [ ] Onboarding flow — capture profession, target exam, and available study hours to personalize planning
 [ ] Adaptive replanning — automatically adjust future targets when the user falls behind or gets ahead
 [ ] Readiness indicator — rule-based progress score (syllabus completion, mock test trend, pace vs. deadline), narrated by AI in plain language — not a false “chance of clearing” prediction
 [ ] Contextual motivational messages — AI-generated, based on streak, recent performance, and task type, instead of static strings
 [ ] Visual dashboard — pace-vs-target chart, streak heatmap, mock score trend line
-[ ] Deployment — live hosted version via Streamlit Community Cloud
+[ ] Deployment — live hosted version via Streamlit Community Cloud 
+```
 
 📌 Status
 
