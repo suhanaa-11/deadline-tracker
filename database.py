@@ -19,6 +19,16 @@ def init_db():
         )
     """)
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            profession TEXT,
+            target_exam TEXT,
+            hours_per_day REAL,
+            onboarded INTEGER DEFAULT 0
+        )
+    """)
+    conn.execute("INSERT OR IGNORE INTO user_profile (id, onboarded) VALUES (1, 0)")
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             goal_id INTEGER,

@@ -2,9 +2,44 @@ import streamlit as st
 from database import init_db, get_connection
 from datetime import date
 from streak_logic import update_streak_on_completion, get_streak
+from ai_planner import generate_task_breakdown
 
 st.set_page_config(page_title="Deadline Tracker", page_icon="🎯", layout="wide")
 init_db()
+conn = get_connection()
+profile = conn.execute("SELECT onboarded FROM user_profile WHERE id=1").fetchone()
+conn.close()
+
+if profile[0] == 0:
+    st.title("👋 Welcome! Let's set things up.")
+    st.caption("This only takes a few seconds and helps personalize your experience.")
+
+    with st.form("onboarding_form"):
+        profession = st.selectbox(
+            "What best describes you?",
+            ["Student", "Working Professional", "Competitive Exam Aspirant", "Other"]
+        )
+        target_exam = st.text_input(
+            "What are you preparing for? (e.g. GATE, project deadline, interview)"
+        )
+        hours_per_day = st.slider(
+            "How many hours per day can you realistically dedicate?",
+            min_value=0.5, max_value=12.0, value=2.0, step=0.5
+        )
+        submitted = st.form_submit_button("Get Started")
+
+        if submitted:
+            conn = get_connection()
+            conn.execute(
+                "UPDATE user_profile SET profession=?, target_exam=?, hours_per_day=?, onboarded=1 WHERE id=1",
+                (profession, target_exam, hours_per_day)
+            )
+            conn.commit()
+            conn.close()
+            st.success("You're all set!")
+            st.rerun()
+
+    st.stop()
 
 st.sidebar.title("🎯 Deadline Tracker")
 page = st.sidebar.radio("Navigate", ["Today", "Goals", "Add New"])
@@ -70,6 +105,16 @@ elif page == "Goals":
             st.subheader(f"{title} (due {deadline})")
             st.progress(pct / 100)
             st.caption(f"{done}/{total} tasks complete")
+
+            if total > 0:
+                with st.expander(f"📋 View all {total} tasks"):
+                    goal_tasks = conn.execute(
+                        "SELECT title, deadline, status FROM tasks WHERE goal_id=? ORDER BY deadline",
+                        (goal_id,)
+                    ).fetchall()
+                    for t_title, t_deadline, t_status in goal_tasks:
+                        icon = "✅" if t_status == "done" else "⬜"
+                        st.write(f"{icon} **{t_title}** — due {t_deadline}")
         with col2:
             st.write("")
             if st.button("🗑️ Delete", key=f"delete_goal_{goal_id}"):
@@ -101,12 +146,38 @@ elif page == "Add New":
         with st.form("goal_form"):
             title = st.text_input("Goal title")
             deadline = st.date_input("Deadline")
+            use_ai = st.checkbox("🤖 Auto-generate tasks with AI", value=True)
             if st.form_submit_button("Add Goal"):
                 conn = get_connection()
-                conn.execute("INSERT INTO goals (title, deadline) VALUES (?, ?)", (title, deadline))
+                cursor = conn.execute("INSERT INTO goals (title, deadline) VALUES (?, ?)", (title, deadline))
+                new_goal_id = cursor.lastrowid
                 conn.commit()
+
+                if use_ai:
+                    profile = conn.execute(
+                        "SELECT profession, hours_per_day FROM user_profile WHERE id=1"
+                    ).fetchone()
+                    profession, hours_per_day = profile
+
+                    with st.spinner("🤖 Generating your task breakdown..."):
+                        tasks = generate_task_breakdown(
+                            goal_title=title,
+                            goal_deadline=str(deadline),
+                            profession=profession or "Student",
+                            hours_per_day=hours_per_day or 2
+                        )
+
+                    for t in tasks:
+                        conn.execute(
+                            "INSERT INTO tasks (goal_id, title, deadline) VALUES (?, ?, ?)",
+                            (new_goal_id, t["title"], t["deadline"])
+                        )
+                    conn.commit()
+                    st.success(f"Goal added with {len(tasks)} AI-generated tasks!")
+                else:
+                    st.success("Goal added!")
+
                 conn.close()
-                st.success("Goal added!")
                 st.rerun()
 
     with tab2:
