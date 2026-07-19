@@ -264,37 +264,51 @@ elif page == "Add New":
             deadline = st.date_input("Deadline")
             use_ai = st.checkbox("🤖 Auto-generate tasks with AI", value=True)
             if st.form_submit_button("Add Goal"):
-                conn = get_connection()
-                cursor = conn.execute("INSERT INTO goals (title, deadline) VALUES (?, ?)", (title, deadline))
-                new_goal_id = cursor.lastrowid
-                conn.commit()
+                title_clean = title.strip()
 
-                if use_ai:
-                    profile = conn.execute(
-                        "SELECT profession, hours_per_day FROM user_profile WHERE id=1"
-                    ).fetchone()
-                    profession, hours_per_day = profile
-
-                    with st.spinner("🤖 Generating your task breakdown..."):
-                        tasks = generate_task_breakdown(
-                            goal_title=title,
-                            goal_deadline=str(deadline),
-                            profession=profession or "Student",
-                            hours_per_day=hours_per_day or 2
-                        )
-
-                    for t in tasks:
-                        conn.execute(
-                            "INSERT INTO tasks (goal_id, title, deadline) VALUES (?, ?, ?)",
-                            (new_goal_id, t["title"], t["deadline"])
-                        )
-                    conn.commit()
-                    st.success(f"Goal added with {len(tasks)} AI-generated tasks!")
+                if not title_clean:
+                    st.error("⚠️ Please enter a goal title.")
                 else:
-                    st.success("Goal added!")
+                    conn = get_connection()
+                    existing = conn.execute(
+                        "SELECT id FROM goals WHERE LOWER(title) = LOWER(?) AND deadline = ?",
+                        (title_clean, deadline)
+                    ).fetchone()
 
-                conn.close()
-                st.rerun()
+                    if existing:
+                        st.warning(f"⚠️ A goal titled '{title_clean}' already exists with this deadline. Try a different title or date.")
+                        conn.close()
+                    else:
+                        cursor = conn.execute("INSERT INTO goals (title, deadline) VALUES (?, ?)", (title_clean, deadline))
+                        new_goal_id = cursor.lastrowid
+                        conn.commit()
+
+                        if use_ai:
+                            profile = conn.execute(
+                                "SELECT profession, hours_per_day FROM user_profile WHERE id=1"
+                            ).fetchone()
+                            profession, hours_per_day = profile
+
+                            with st.spinner("🤖 Generating your task breakdown..."):
+                                tasks = generate_task_breakdown(
+                                    goal_title=title_clean,
+                                    goal_deadline=str(deadline),
+                                    profession=profession or "Student",
+                                    hours_per_day=hours_per_day or 2
+                                )
+
+                            for t in tasks:
+                                conn.execute(
+                                    "INSERT INTO tasks (goal_id, title, deadline) VALUES (?, ?, ?)",
+                                    (new_goal_id, t["title"], t["deadline"])
+                                )
+                            conn.commit()
+                            st.success(f"Goal added with {len(tasks)} AI-generated tasks!")
+                        else:
+                            st.success("Goal added!")
+
+                        conn.close()
+                        st.rerun()
 
     with tab2:
         conn = get_connection()
