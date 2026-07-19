@@ -42,7 +42,7 @@ if profile[0] == 0:
     st.stop()
 
 st.sidebar.title("🎯 Deadline Tracker")
-page = st.sidebar.radio("Navigate", ["Today", "Goals", "Add New"])
+page = st.sidebar.radio("Navigate", ["Today", "Goals", "Add New", "Profile"])
 st.sidebar.divider()
 st.sidebar.caption("Stay consistent. One task at a time.")
 
@@ -107,6 +107,29 @@ elif page == "Goals":
             st.caption(f"{done}/{total} tasks complete")
 
             if total > 0:
+                from datetime import datetime
+                goal_created = conn.execute("SELECT created_at FROM goals WHERE id=?", (goal_id,)).fetchone()[0]
+                start_date = datetime.strptime(goal_created, "%Y-%m-%d").date()
+                end_date = datetime.strptime(str(deadline), "%Y-%m-%d").date() if isinstance(deadline, str) else deadline
+                today_date = date.today()
+
+                total_days = (end_date - start_date).days
+                elapsed_days = (today_date - start_date).days
+
+                if total_days > 0:
+                    expected_pct = min(100, max(0, (elapsed_days / total_days) * 100))
+                else:
+                    expected_pct = 100
+
+                diff = pct - expected_pct
+                if diff >= 5:
+                    status_msg = f"🟢 Ahead of schedule — you're {diff:.0f}% ahead of pace."
+                elif diff <= -10:
+                    status_msg = f"🔴 Behind schedule — you're {abs(diff):.0f}% behind pace."
+                else:
+                    status_msg = "🟡 Right on pace — keep it up."
+
+                st.caption(f"Expected progress by today: {expected_pct:.0f}% | {status_msg}")
                 with st.expander(f"📋 View all {total} tasks"):
                     goal_tasks = conn.execute(
                         "SELECT title, deadline, status FROM tasks WHERE goal_id=? ORDER BY deadline",
@@ -203,3 +226,37 @@ elif page == "Add New":
                 conn.close()
                 st.success("Task added!")
                 st.rerun()
+elif page == "Profile":
+    st.title("👤 Your Profile")
+    conn = get_connection()
+    profile = conn.execute(
+        "SELECT profession, target_exam, hours_per_day FROM user_profile WHERE id=1"
+    ).fetchone()
+    conn.close()
+
+    current_profession, current_exam, current_hours = profile
+
+    st.caption("Update your details anytime — this helps personalize your AI-generated plans.")
+
+    with st.form("edit_profile_form"):
+        profession = st.selectbox(
+            "What best describes you?",
+            ["Student", "Working Professional", "Competitive Exam Aspirant", "Other"],
+            index=["Student", "Working Professional", "Competitive Exam Aspirant", "Other"].index(current_profession)
+            if current_profession in ["Student", "Working Professional", "Competitive Exam Aspirant", "Other"] else 0
+        )
+        target_exam = st.text_input("What are you preparing for?", value=current_exam or "")
+        hours_per_day = st.slider(
+            "Hours per day available", min_value=0.5, max_value=12.0,
+            value=float(current_hours) if current_hours else 2.0, step=0.5
+        )
+        if st.form_submit_button("Save Changes"):
+            conn = get_connection()
+            conn.execute(
+                "UPDATE user_profile SET profession=?, target_exam=?, hours_per_day=? WHERE id=1",
+                (profession, target_exam, hours_per_day)
+            )
+            conn.commit()
+            conn.close()
+            st.success("Profile updated!")
+            st.rerun()
