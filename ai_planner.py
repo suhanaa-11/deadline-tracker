@@ -49,3 +49,24 @@ Respond with ONLY a valid JSON array, no markdown formatting, no explanation, no
         print("⚠️ Could not parse AI response as JSON. Raw response was:")
         print(raw_text)
         return []
+def generate_weekly_summary(completed_count, total_count, best_day, streak, upcoming_goal_titles):
+    model = genai.GenerativeModel("gemini-flash-latest")
+
+    prompt = f"""You are a supportive but honest productivity coach. Write a short weekly summary (3-4 sentences max) for a user based on this data:
+
+- Tasks completed this week: {completed_count} out of {total_count}
+- Best day this week: {best_day}
+- Current streak: {streak} days
+- Active goals: {", ".join(upcoming_goal_titles) if upcoming_goal_titles else "none"}
+
+Rules:
+- Be encouraging but honest — don't overpraise if completion was low, and don't undersell good progress.
+- Do not make up specific facts not given above.
+- Format your response as 3-4 short bullet points using "- " at the start of each line.
+- Keep each bullet point to one short sentence.
+- The last bullet point should be one small, actionable suggestion for next week.
+- Do not include any heading or introduction — start directly with the first bullet point.
+"""
+
+    response = model.generate_content(prompt)
+    return response.text.strip()

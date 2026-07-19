@@ -1,9 +1,8 @@
 import streamlit as st
 from database import init_db, get_connection
-from datetime import date
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from streak_logic import update_streak_on_completion, get_streak
-from ai_planner import generate_task_breakdown
+from ai_planner import generate_task_breakdown, generate_weekly_summary
 
 st.set_page_config(page_title="Deadline Tracker", page_icon="🎯", layout="wide")
 init_db()
@@ -51,6 +50,42 @@ if page == "Today":
     st.title("Today's Tasks")
     current, longest = get_streak()
     st.metric("Current Streak 🔥", f"{current} days", help=f"Longest streak: {longest} days")
+    with st.expander("📊 View this week's summary"):
+        conn_summary = get_connection()
+        week_ago = (date.today() - timedelta(days=7)).isoformat()
+
+        completed_this_week = conn_summary.execute(
+            "SELECT completed_at FROM tasks WHERE status='done' AND completed_at >= ?",
+            (week_ago,)
+        ).fetchall()
+        total_this_week = conn_summary.execute(
+            "SELECT COUNT(*) FROM tasks WHERE deadline >= ? AND deadline <= ?",
+            (week_ago, date.today().isoformat())
+        ).fetchone()[0]
+
+        completed_count = len(completed_this_week)
+
+        if completed_count == 0 and total_this_week == 0:
+            st.info("Not enough activity yet this week to generate a summary.")
+        else:
+            from collections import Counter
+            day_counts = Counter(datetime.strptime(c[0], "%Y-%m-%d").strftime("%A") for c in completed_this_week)
+            best_day = day_counts.most_common(1)[0][0] if day_counts else "N/A"
+
+            goals_list = conn_summary.execute("SELECT title FROM goals").fetchall()
+            goal_titles = [g[0] for g in goals_list]
+
+            if st.button("🤖 Generate my weekly summary"):
+                with st.spinner("Analyzing your week..."):
+                    summary = generate_weekly_summary(
+                        completed_count=completed_count,
+                        total_count=max(total_this_week, completed_count),
+                        best_day=best_day,
+                        streak=current,
+                        upcoming_goal_titles=goal_titles
+                    )
+                st.write(summary)
+        conn_summary.close()
     conn = get_connection()
     tasks = conn.execute(
         "SELECT id, title, deadline FROM tasks WHERE status='pending' AND deadline <= ?",
